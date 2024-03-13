@@ -1,0 +1,39 @@
+echo "(${env.JOB_NAME})"
+checkpoint 'BUILD'
+node('wasmrbld') {
+
+//Change the variables as required for each project
+def BUILD_HOME="/buildsystem/staging8"
+def PROJECT_NAME="ug_edi"
+def EAR_PATH="/was/app/EnterpriseApps/ug_edi.ear"
+
+
+stage 'BUILD'
+
+    checkout([$class: 'GitSCM', branches: [[name: '*/master']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '6c905da4-e500-460e-affd-99130facc264', url:'https://github.ugcorp.com/EDILOS/ug_edi.git']]])
+    
+env.JAVA_HOME="${tool 'JDK'}"
+def AntHome = tool 'Ant'
+def WORKSPACE=pwd()
+
+//compile test run jacoco
+sh "${AntHome}/bin/ant -f $WORKSPACE/jacoco.xml -Dbuild=$WORKSPACE/build -Dsource=$WORKSPACE -Dcompiled=$WORKSPACE/jacoco-compiled -Ddestination=$WORKSPACE/destination -Dlibrarypath=$BUILD_HOME/lib -Dreport_dir=$WORKSPACE/build/surefire-reports -Dresult.exec.file=$WORKSPACE/build/surefire-reports/jacoco.exec"
+
+//compile and build
+sh "${AntHome}/bin/ant -f $WORKSPACE/build.xml -Dsource=$WORKSPACE/source -Dcompiled=$WORKSPACE/compiled -Ddistribute=$WORKSPACE/distribute -Dlib_stage=$WORKSPACE/lib_stage -Dresource=$WORKSPACE/webdocs -Dlibrarypath=$BUILD_HOME/lib -Dearpath=$EAR_PATH -Dversion=master-${env.BUILD_NUMBER}"
+
+//step: 'RUN SONAR'
+env.JAVA_HOME="/usr/java8_64/jre"
+sh "${AntHome}/bin/ant -f $WORKSPACE/sonar.xml -Dsonar.projectKey=$PROJECT_NAME -Dsonar.projectName=$PROJECT_NAME -Dlibrarypath=$BUILD_HOME/lib -Dsource=$WORKSPACE -Dsonar.surefire.reportsPath=$WORKSPACE/.sonar/build/surefire-reports -Dsonar.java.coveragePlugin=jacoco -Dsonar.dynamicAnalysis=reuseReports -Dsonar.jacoco.reportPath=$WORKSPACE/build/surefire-reports/jacoco.exec -Dsonar.java.binaries=$WORKSPACE/jacoco-compiled -Dsonar.projectVersion=${env.BUILD_NUMBER} sonar"
+
+echo "Build Completed" 
+
+stage 'DEV'
+//run distribute to deploy to DEV
+sh "${AntHome}/bin/ant -f $WORKSPACE/distribute.xml -Dproject=$PROJECT_NAME -Dugediear.home=$EAR_PATH -Ddistribute.home=$WORKSPACE/distribute -Dlib.home=$BUILD_HOME/lib"
+
+//archieve the artifacts
+step([$class: 'ArtifactArchiver', artifacts: '**/distribute/**/*', fingerprint: true])
+
+echo "Deploy to DEV Completed" 
+}

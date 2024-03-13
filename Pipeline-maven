@@ -1,0 +1,35 @@
+echo "(${env.JOB_NAME})"
+checkpoint 'BUILD'
+node('admjkn601') {
+  
+   stage 'Checkout'
+
+   // Get some code from a GitHub repository
+   git url: 'https://github.ugcorp.com/Origination/pipeline-data-service.git'
+
+   // Get the maven tool.
+   // ** NOTE: This 'M3' maven tool must be configured
+   // **       in the global configuration.           
+   def mvnHome = tool 'MAVEN'
+
+   // Mark the code build 'stage'....
+   stage 'Build'
+   // Run the maven build
+   bat 'D:\\maven\\apache-maven-3.3.3/bin/mvn clean package -Pwebsphere -DskipTests'
+    echo "Build Completed" 
+    
+    //archieve the artifacts
+step([$class: 'ArtifactArchiver', artifacts: 'target/*.war', fingerprint: true])
+
+    stage 'DEV'
+    echo "(${env.JOB_NAME})"
+    checkpoint 'BUILD'
+node('wcmi-drv-jbss01') {
+    //Change the variables as required for each project
+    def CONTROLLER="wcmi-drv-jbss01:9990"
+    def SERVER_GROUP="OriginationsServices_AMI"
+    def USERNAME_JBOSS_DEV="eapadmin"
+    def PASSWORD_JBOSS_DEV="RMDdxPNk"
+
+sh '''/opt/jboss/bin/jboss-cli.sh -c controller=wcmi-drv-jbss01:9990 --user=eapadmin --password=RMDdxPNk --command="undeploy pipeline-data-service-0.1.0-SNAPSHOT.war --server-groups=$SERVER_GROUP" && /opt/jboss/bin/jboss-cli.sh -c controller=wcmi-drv-jbss01:9990 --user=eapadmin --password=RMDdxPNk --command="deploy /lastSuccessfulBuild/artifact/target/pipeline-data-service-0.1.0-SNAPSHOT.war --server-groups=$SERVER_GROUP" || \
+/opt/jboss/bin/jboss-cli.sh -c controller=wcmi-drv-jbss01:9990 --user=eapadmin --password=RMDdxPNk --command="deploy lastSuccessfulBuild/artifact/target/pipeline-data-service-0.1.0-SNAPSHOT.war --server-groups=$SERVER_GROUP"'''
